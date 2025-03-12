@@ -24,7 +24,9 @@ const MultipleOcr = () => {
 
   // Remove selected image
   const removeImage = (index) => {
-    setSelectedImages((prevImages) => prevImages.filter((_, i) => i !== index));
+    setSelectedImages((prevImages) =>
+      prevImages.filter((_, item) => item !== index)
+    );
   };
 
   // Perform OCR on multiple images
@@ -63,36 +65,59 @@ const MultipleOcr = () => {
   const extractPassportData = (text) => {
     const mrzLines = text
       .split("\n")
-      .filter((line) => line.includes("<<") || line.match(/\d{9}[A-Z]/));
+      .map((line) => line.trim()) // Remove extra spaces
+      .filter((line) => line.includes("<<") || line.match(/^\d{9}[A-Z]/));
 
     if (mrzLines.length < 2) {
       return { error: "MRZ section not detected properly." };
     }
 
+    // Extract MRZ lines
     const line1 = mrzLines[0].replace(/\s/g, ""); // Remove spaces
     const line2 = mrzLines[1].replace(/\s/g, "");
 
+    // **Extract Name (Surname + Given Name)**
     const nameParts = line1.split("<<");
-    const surname = nameParts[0].replace(/^P<[A-Z]{3}/, ""); // Removes "P<BGD"
+
+    // Fix Surname Extraction: Remove dynamic country code
+    const surname = nameParts[0].replace(/^P<([A-Z]{3})/, "").trim(); // Removes "P<BGD"
+
+    // Fix Given Name Extraction: Keep full name, remove unwanted characters
     const givenName = nameParts[1]
-      .replace(/<+/g, " ")
-      .replace(/[^A-Za-z ]/g, "")
-      .trim();
+      ?.replace(/<+/g, " ") // Replace multiple '<' with a space
+      .replace(/[^A-Za-z ]/g, "") // Remove non-alphabet characters
+      .trim()
+      .split(" ")[0];
+
+    // **Extract MRZ Line 2 Details**
+    const passportNumber = line2.substring(0, 9);
+    const nationality = line2.substring(10, 13);
+    const dateOfBirth = formatDate(line2.substring(13, 19));
+    const gender = line2.substring(20, 21);
+    const expiryDate = formatDate(line2.substring(21, 27));
+
+    // **Extract Issue Date from Text**
+    let issueDate = "Not found";
     const issueDateMatch = text.match(/\b\d{2} [A-Za-z]{3} \d{4}\b/g);
 
-    let issueDate = "Not found";
-    if (issueDateMatch && issueDateMatch.length >= 3) {
-      issueDate = issueDateMatch[1]; // The 2nd date is usually the issue date
+    // Improved logic: Search for "Date of Issue" near detected dates
+    if (issueDateMatch) {
+      for (let i = 0; i < issueDateMatch.length - 1; i++) {
+        if (text.includes("Date of Issue") || text.includes("Issued on")) {
+          issueDate = issueDateMatch[i];
+          break;
+        }
+      }
     }
 
     return {
-      PassportNumber: line2.substring(0, 9),
-      Surname: surname,
-      GivenName: givenName,
-      Nationality: line2.substring(10, 13),
-      DateOfBirth: formatDate(line2.substring(13, 19)),
-      Gender: line2.substring(20, 21),
-      ExpiryDate: formatDate(line2.substring(21, 27)),
+      PassportNumber: passportNumber || "Not found",
+      Surname: surname || "Not found",
+      GivenName: givenName || "Not found",
+      Nationality: nationality || "Not found",
+      DateOfBirth: dateOfBirth || "Not found",
+      Gender: gender || "Not found",
+      ExpiryDate: expiryDate || "Not found",
       IssueDate: issueDate,
     };
   };
